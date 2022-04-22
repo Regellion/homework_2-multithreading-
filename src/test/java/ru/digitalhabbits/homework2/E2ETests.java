@@ -5,10 +5,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.entry;
 
 import com.google.common.io.Files;
-import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import ru.digitalhabbits.homework2.impl.AsyncFileLetterCounter;
-import ru.digitalhabbits.homework2.impl.AsyncLetterCounterImpl;
 import ru.digitalhabbits.homework2.impl.FileReaderImpl;
 import ru.digitalhabbits.homework2.impl.LetterCountMergerImpl;
 
@@ -22,17 +20,11 @@ import java.util.stream.Stream;
 public class E2ETests {
     private static final FileReader fileReader = new FileReaderImpl();
     private static final LetterCountMerger letterCountMerger = new LetterCountMergerImpl();
-    private static final LetterCounter letterCounter = new AsyncLetterCounterImpl();
-    private static FileLetterCounter counter;
-
-    @BeforeAll
-    static void init() {
-        counter = new AsyncFileLetterCounter(fileReader, letterCounter, letterCountMerger);
-    }
 
     @Test
     void async_file_letter_counting_should_return_predicted_count() {
         var file = getFile("test.txt");
+        var counter = new AsyncFileLetterCounter();
 
         Map<Character, Long> count = counter.count(file);
 
@@ -50,7 +42,7 @@ public class E2ETests {
     void emptyFileTest() {
         var file = getFile("empty.txt");
 
-        Map<Character, Long> count = counter.count(file);
+        Map<Character, Long> count = new AsyncFileLetterCounter().count(file);
         assertThat(count).isNull();
     }
 
@@ -80,8 +72,6 @@ public class E2ETests {
     void asyncLetterCounterInParallelThreads() {
         var file = getFile("test2.txt");
 
-
-
         LetterCounter letterCounter = (line) -> {
             try {
                 Thread.sleep(1000);
@@ -96,7 +86,7 @@ public class E2ETests {
                     });
             return charMap;
         };
-        counter = new AsyncFileLetterCounter(fileReader, letterCounter, letterCountMerger);
+
         FileLetterCounter fileLetterCounter = (f) -> fileReader
                 .readLines(f)
                 .parallel()

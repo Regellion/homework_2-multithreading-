@@ -10,15 +10,9 @@ import java.util.Map;
 
 public class AsyncFileLetterCounter implements FileLetterCounter {
 
-    private final FileReader fileReader;
-    private final LetterCounter letterCounter;
-    private final LetterCountMerger letterCountMerger;
-
-    public AsyncFileLetterCounter(FileReader fileReader, LetterCounter letterCounter, LetterCountMerger letterCountMerger) {
-        this.fileReader = fileReader;
-        this.letterCounter = letterCounter;
-        this.letterCountMerger = letterCountMerger;
-    }
+    private final FileReader fileReader = new FileReaderImpl();
+    private final LetterCounter letterCounter = new AsyncLetterCounterImpl();
+    private final LetterCountMerger letterCountMerger = new LetterCountMergerImpl();
 
     @Override
     public Map<Character, Long> count(File input) {
