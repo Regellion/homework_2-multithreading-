@@ -3,28 +3,41 @@ package ru.digitalhabbits.homework2;
 import static com.google.common.io.Resources.getResource;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.entry;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
-import com.google.common.io.Files;
+import lombok.SneakyThrows;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
-import ru.digitalhabbits.homework2.impl.AsyncFileLetterCounter;
-import ru.digitalhabbits.homework2.impl.FileReaderImpl;
-import ru.digitalhabbits.homework2.impl.LetterCountMergerImpl;
+import ru.digitalhabbits.homework2.impl.*;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.charset.Charset;
-import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
-import java.util.stream.Stream;
+import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.RecursiveTask;
 
 public class E2ETests {
-    private static final FileReader fileReader = new FileReaderImpl();
-    private static final LetterCountMerger letterCountMerger = new LetterCountMergerImpl();
+
+    private static FileReader fileReader;
+    private static FileReader fileReaderMock;
+    private static LetterCounter letterCounter;
+    private static LetterCountMerger letterCountMerger;
+
+    @BeforeAll
+    static void init() {
+        fileReader = new FileReaderImpl();
+        fileReaderMock = new FileReaderMockImpl();
+        letterCounter = new LetterCounterImpl();
+        letterCountMerger = new LetterCountMergerImpl();
+    }
+
 
     @Test
     void async_file_letter_counting_should_return_predicted_count() {
         var file = getFile("test.txt");
-        var counter = new AsyncFileLetterCounter();
+        var counter = new AsyncFileLetterCounter(fileReader, letterCounter, letterCountMerger);
 
         Map<Character, Long> count = counter.count(file);
 
@@ -38,78 +51,108 @@ public class E2ETests {
         );
     }
 
-    @Test
-    void emptyFileTest() {
-        var file = getFile("empty.txt");
-
-        Map<Character, Long> count = new AsyncFileLetterCounter().count(file);
-        assertThat(count).isNull();
-    }
-
 
     @Test
-    void fileReaderInMainThread() {
+    void file_reader_work_in_main_thread() {
         var file = getFile("test.txt");
-        FileReader fileReader = (f) -> {
-            try {
-                Thread.sleep(1000);
-                return Files.readLines(f, Charset.defaultCharset()).stream();
-            } catch (IOException | InterruptedException e) {
-                e.printStackTrace();
-            }
-            return Stream.empty();
-        };
+        FileReader fileReader = new FileReaderMockImpl();
 
         long start = System.currentTimeMillis();
         fileReader.readLines(file);
         long end = System.currentTimeMillis();
 
         assertThat(end - start).isGreaterThan(1000);
-
     }
 
     @Test
-    void asyncLetterCounterInParallelThreads() {
-        var file = getFile("test2.txt");
-
-        LetterCounter letterCounter = (line) -> {
-            try {
-                Thread.sleep(1000);
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            }
-            Map<Character, Long> charMap = new HashMap<>();
-            line.chars()
-                    .forEach(c -> {
-                        charMap.computeIfAbsent((char) c, (k) -> 0L);
-                        charMap.computeIfPresent((char) c, (k, v) -> v + 1);
-                    });
-            return charMap;
-        };
-
-        FileLetterCounter fileLetterCounter = (f) -> fileReader
-                .readLines(f)
-                .parallel()
-                .map(letterCounter::count)
-                .reduce(letterCountMerger::merge)
-                .orElse(null);
-
+    void async_letter_counter_work_in_different_threads() {
+        var file = getFile("test.txt");
 
         long start = System.currentTimeMillis();
-        Map<Character, Long> count = fileLetterCounter.count(file);
+        Map<Character, Long> count = new AsyncFileLetterCounterMock(fileReaderMock, letterCounter, letterCountMerger).count(file);
         long end = System.currentTimeMillis();
 
         assertThat(end - start).isLessThan(10000);
         assertThat(count).containsOnly(
-                entry('a', 3L),
-                entry('b', 2L),
-                entry('c', 2L),
-                entry('d', 2L),
-                entry('e', 1L)
+                entry('a', 2697L),
+                entry('b', 2683L),
+                entry('c', 2647L),
+                entry('d', 2613L),
+                entry('e', 2731L),
+                entry('f', 2629L)
         );
     }
 
     private File getFile(String name) {
         return new File(getResource(name).getPath());
     }
+
+    public static class FileReaderMockImpl implements FileReader {
+        @Override
+        public List<String> readLines(File file) {
+            try {
+                Thread.sleep(1000);
+                return java.nio.file.Files.readAllLines(file.toPath());
+            } catch (IOException | InterruptedException e) {
+                e.printStackTrace();
+                return null;
+            }
+        }
+    }
+
+
+    public static class LetterCountAndMapMergeTaskMock extends RecursiveTask<Map<Character, Long>> {
+
+        private final List<String> strings;
+        private final LetterCounter letterCounter;
+        private final LetterCountMerger letterCountMerger;
+
+        public LetterCountAndMapMergeTaskMock(List<String> strings, LetterCounter letterCounter, LetterCountMerger letterCountMerger) {
+            this.strings = strings;
+            this.letterCounter = letterCounter;
+            this.letterCountMerger = letterCountMerger;
+        }
+
+        @Override
+        protected Map<Character, Long> compute() {
+            try {
+                Thread.sleep(1000);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+            if (strings.size() <= 2) {
+                return strings.stream().map(letterCounter::count).reduce(letterCountMerger::merge).orElse(null);
+            }
+
+            ru.digitalhabbits.homework2.impl.LetterCountAndMapMergeTask task1 = new ru.digitalhabbits.homework2.impl.LetterCountAndMapMergeTask(strings.subList(0, strings.size() / 2), letterCounter, letterCountMerger);
+            ru.digitalhabbits.homework2.impl.LetterCountAndMapMergeTask task2 = new ru.digitalhabbits.homework2.impl.LetterCountAndMapMergeTask(strings.subList(strings.size() / 2, strings.size()), letterCounter, letterCountMerger);
+
+            task1.fork();
+            task2.fork();
+
+            return letterCountMerger.merge(task1.join(), task2.join());
+        }
+    }
+
+
+    public static class AsyncFileLetterCounterMock implements FileLetterCounter {
+
+        private final FileReader fileReader;
+        private final LetterCounter letterCounter;
+        private final LetterCountMerger letterCountMerger;
+
+        public AsyncFileLetterCounterMock(FileReader fileReader, LetterCounter letterCounter, LetterCountMerger letterCountMerger) {
+            this.fileReader = fileReader;
+            this.letterCounter = letterCounter;
+            this.letterCountMerger = letterCountMerger;
+        }
+
+        @Override
+        public Map<Character, Long> count(File input) {
+            List<String> strings = fileReader.readLines(input);
+            ForkJoinPool forkJoinPool = new ForkJoinPool(Runtime.getRuntime().availableProcessors());
+            return forkJoinPool.invoke(new LetterCountAndMapMergeTaskMock(strings, letterCounter, letterCountMerger));
+        }
+    }
+
 }

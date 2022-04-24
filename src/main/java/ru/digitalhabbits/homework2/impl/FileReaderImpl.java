@@ -1,22 +1,17 @@
 package ru.digitalhabbits.homework2.impl;
 
-import com.google.common.io.Files;
+import lombok.SneakyThrows;
 import ru.digitalhabbits.homework2.FileReader;
 
 import java.io.File;
-import java.io.IOException;
-import java.nio.charset.Charset;
-import java.util.stream.Stream;
+import java.nio.file.Files;
+import java.util.List;
 
 public class FileReaderImpl implements FileReader {
 
+    @SneakyThrows
     @Override
-    public Stream<String> readLines(File file) {
-        try {
-            return Files.readLines(file, Charset.defaultCharset()).stream();
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-        return Stream.empty();
+    public List<String> readLines(File file) {
+        return Files.readAllLines(file.toPath());
     }
 }
