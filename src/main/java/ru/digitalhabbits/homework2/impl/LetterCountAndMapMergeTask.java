@@ -1,6 +1,5 @@
 package ru.digitalhabbits.homework2.impl;
 
-import com.google.common.collect.Lists;
 import lombok.AllArgsConstructor;
 import ru.digitalhabbits.homework2.LetterCountMerger;
 import ru.digitalhabbits.homework2.LetterCounter;
